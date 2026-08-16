@@ -392,6 +392,11 @@ deno_version = 2
 [functions.google-oauth-callback]
 verify_jwt = false
 
+# Gleicher Grund wie bei google-oauth-callback: Slack ruft diese Function
+# direkt im Browser auf, kein Supabase-JWT im Request.
+[functions.slack-oauth-callback]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
