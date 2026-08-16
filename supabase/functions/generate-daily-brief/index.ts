@@ -9,11 +9,14 @@
 import { classifyUrgency } from "../_shared/clickup.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { generateJson } from "../_shared/gemini.ts";
-import { fetchAustrianNews, fetchAustrianPoliticsNews } from "../_shared/newsapi.ts";
+import { DEFAULT_NEWS_SOURCE_DOMAINS, fetchAustrianNews, fetchAustrianPoliticsNews } from "../_shared/newsapi.ts";
 import { isBirthdayThisWeek, isBirthdayToday, isContactOverdue, isEventToday } from "../_shared/calendarToday.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 
 type AdminClient = ReturnType<typeof supabaseAdmin>;
+
+type SectionsEnabled = { email: boolean; news: boolean; messages: boolean; calendar: boolean };
+const DEFAULT_SECTIONS_ENABLED: SectionsEnabled = { email: true, news: true, messages: true, calendar: true };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -36,30 +39,47 @@ Deno.serve(async (req) => {
       userId = userData.user.id;
     }
 
+    const { data: userSettings } = await admin
+      .from("user_settings")
+      .select("sections_enabled, news_sources")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const sectionsEnabled: SectionsEnabled = { ...DEFAULT_SECTIONS_ENABLED, ...(userSettings?.sections_enabled ?? {}) };
+    const newsSources: string[] = userSettings?.news_sources?.length ? userSettings.news_sources : DEFAULT_NEWS_SOURCE_DOMAINS;
+
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const [emailsResult, messagesResult, eventsResult, contactsResult] = await Promise.all([
-      admin
-        .from("messages_cache")
-        .select("sender_name, content_preview, received_at, raw_data, connected_accounts!inner(user_id)")
-        .eq("platform", "gmail")
-        .eq("is_read", false)
-        .eq("connected_accounts.user_id", userId)
-        .gte("received_at", since24h),
-      admin
-        .from("messages_cache")
-        .select("platform, sender_name, content_preview, received_at, raw_data, connected_accounts!inner(user_id)")
-        .in("platform", ["whatsapp", "slack", "clickup"])
-        .eq("is_read", false)
-        .eq("connected_accounts.user_id", userId),
-      admin
-        .from("calendar_events_cache")
-        .select("title, start_time, recurrence_rule, location, connected_accounts!inner(user_id)")
-        .eq("connected_accounts.user_id", userId),
-      admin
-        .from("contact_tracking")
-        .select("contact_name, last_contacted_at, contact_frequency_days, is_family, birthday")
-        .eq("user_id", userId),
+      sectionsEnabled.email
+        ? admin
+            .from("messages_cache")
+            .select("sender_name, content_preview, received_at, raw_data, connected_accounts!inner(user_id)")
+            .eq("platform", "gmail")
+            .eq("is_read", false)
+            .eq("connected_accounts.user_id", userId)
+            .gte("received_at", since24h)
+        : Promise.resolve({ data: [] as any[] }),
+      sectionsEnabled.messages || sectionsEnabled.calendar
+        ? admin
+            .from("messages_cache")
+            .select("platform, sender_name, content_preview, received_at, raw_data, connected_accounts!inner(user_id)")
+            .in("platform", ["whatsapp", "slack", "clickup"])
+            .eq("is_read", false)
+            .eq("connected_accounts.user_id", userId)
+        : Promise.resolve({ data: [] as any[] }),
+      sectionsEnabled.calendar
+        ? admin
+            .from("calendar_events_cache")
+            .select("title, start_time, recurrence_rule, location, connected_accounts!inner(user_id)")
+            .eq("connected_accounts.user_id", userId)
+        : Promise.resolve({ data: [] as any[] }),
+      sectionsEnabled.calendar
+        ? admin
+            .from("contact_tracking")
+            .select("contact_name, last_contacted_at, contact_frequency_days, is_family, birthday")
+            .eq("user_id", userId)
+        : Promise.resolve({ data: [] as any[] }),
     ]);
 
     const emails = emailsResult.data ?? [];
@@ -68,18 +88,17 @@ Deno.serve(async (req) => {
     const contacts = contactsResult.data ?? [];
 
     const [emailSection, newsSection, messagesSection] = await Promise.all([
-      buildEmailSection(emails),
-      buildNewsSection(),
-      buildMessagesSection(messages),
+      sectionsEnabled.email ? buildEmailSection(emails) : Promise.resolve(null),
+      sectionsEnabled.news ? buildNewsSection(newsSources) : Promise.resolve(null),
+      sectionsEnabled.messages ? buildMessagesSection(messages) : Promise.resolve(null),
     ]);
-    const calendarSection = buildCalendarSection(events, contacts, messages);
+    const calendarSection = sectionsEnabled.calendar ? buildCalendarSection(events, contacts, messages) : null;
 
-    const sections: Record<string, unknown> = {
-      email: emailSection,
-      news: newsSection,
-      messages: messagesSection,
-      calendar: calendarSection,
-    };
+    const sections: Record<string, unknown> = {};
+    if (emailSection !== null) sections.email = emailSection;
+    if (newsSection !== null) sections.news = newsSection;
+    if (messagesSection !== null) sections.messages = messagesSection;
+    if (calendarSection !== null) sections.calendar = calendarSection;
 
     const briefDate = new Date().toISOString().slice(0, 10);
     const generatedAt = new Date().toISOString();
@@ -91,12 +110,14 @@ Deno.serve(async (req) => {
       generated_at: generatedAt,
     }));
 
-    const { error: upsertError } = await admin
-      .from("daily_briefs")
-      .upsert(rows, { onConflict: "user_id,brief_date,section" });
+    if (rows.length > 0) {
+      const { error: upsertError } = await admin
+        .from("daily_briefs")
+        .upsert(rows, { onConflict: "user_id,brief_date,section" });
 
-    if (upsertError) {
-      return json({ error: `daily_briefs upsert fehlgeschlagen: ${upsertError.message}` }, 500);
+      if (upsertError) {
+        return json({ error: `daily_briefs upsert fehlgeschlagen: ${upsertError.message}` }, 500);
+      }
     }
 
     return json({ ok: true, brief_date: briefDate, generated_at: generatedAt, sections });
@@ -151,7 +172,7 @@ function buildEmailFallback(emails: any[]) {
 
 // ---------- News-Brief ----------
 
-async function buildNewsSection() {
+async function buildNewsSection(newsSources: string[]) {
   const apiKey = Deno.env.get("NEWS_API_KEY");
   if (!apiKey) {
     return { oesterreich: [], politik: [], error: "NEWS_API_KEY ist serverseitig nicht konfiguriert." };
@@ -160,7 +181,10 @@ async function buildNewsSection() {
   let general: Awaited<ReturnType<typeof fetchAustrianNews>> = [];
   let politics: Awaited<ReturnType<typeof fetchAustrianPoliticsNews>> = [];
   try {
-    [general, politics] = await Promise.all([fetchAustrianNews(apiKey, 15), fetchAustrianPoliticsNews(apiKey, 15)]);
+    [general, politics] = await Promise.all([
+      fetchAustrianNews(apiKey, newsSources, 15),
+      fetchAustrianPoliticsNews(apiKey, newsSources, 15),
+    ]);
   } catch (error) {
     console.error("NewsAPI Fehler:", error);
     return {
