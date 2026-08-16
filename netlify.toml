@@ -1,0 +1,11 @@
+[build]
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+# Client-seitiges Routing (expo-router, output:"single"/SPA) - Netlify prueft
+# vorhandene Dateien zuerst, dieser Fallback greift nur fuer Pfade ohne
+# passende Datei (z.B. /settings, /onboarding).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

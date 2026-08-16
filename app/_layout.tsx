@@ -3,6 +3,7 @@ import "../global.css";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
+import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -80,6 +81,20 @@ function RootLayoutNav() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      {/* PWA-Installierbarkeit ("Zum Home-Bildschirm hinzufuegen"). Laeuft
+          nur auf Web (Head ist dort ein Portal in document.head); auf
+          nativen Plattformen ist Head ein No-Op. Bewusst hier statt via
+          app/+html.tsx, weil letzteres nur im "static"-Export-Modus
+          greift - der fuer diese Auth-gated App wegen serverseitigem
+          Prerendering von Supabase-Session-Code nicht nutzbar ist. */}
+      <Head>
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Daily Brief" />
+        <meta name="mobile-web-app-capable" content="yes" />
+      </Head>
       <StatusBar style="light" />
       <AuthProvider>
         <RootLayoutNav />
