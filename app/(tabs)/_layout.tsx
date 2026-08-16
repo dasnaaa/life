@@ -2,8 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
 import { colors } from "../../constants/colors";
+import { useUnreadBadge } from "../../lib/useUnreadBadge";
 
 export default function TabsLayout() {
+  const unreadCount = useUnreadBadge();
+
   return (
     <Tabs
       screenOptions={{
@@ -12,6 +15,7 @@ export default function TabsLayout() {
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarBadgeStyle: { backgroundColor: colors.danger },
       }}
     >
       <Tabs.Screen
@@ -25,6 +29,7 @@ export default function TabsLayout() {
         name="messages"
         options={{
           title: "Nachrichten",
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles-outline" size={size} color={color} />,
         }}
       />

@@ -1,13 +1,14 @@
 import "../global.css";
 
 import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { colors } from "../constants/colors";
 import { AuthProvider, useAuth } from "../lib/AuthProvider";
+import { registerBackgroundSync } from "../lib/backgroundSync";
 
 function RootLayoutNav() {
   const { session, isLoading } = useAuth();
@@ -25,6 +26,15 @@ function RootLayoutNav() {
       router.replace("/(tabs)");
     }
   }, [session, isLoading, segments, router]);
+
+  useEffect(() => {
+    // Background Fetch / lokale Notifications sind auf Web nicht sinnvoll
+    // nutzbar und nur in Dev-/EAS-Builds wirklich zuverlaessig (nicht in
+    // Expo Go) - siehe lib/backgroundSync.ts.
+    if (session && Platform.OS !== "web") {
+      registerBackgroundSync();
+    }
+  }, [session]);
 
   if (isLoading) {
     return (
