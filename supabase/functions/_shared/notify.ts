@@ -8,7 +8,13 @@ import { sendWebPush } from "./webpush.ts";
 
 type AdminClient = ReturnType<typeof import("./supabaseAdmin.ts").supabaseAdmin>;
 
-export type NotificationType = "daily_brief" | "urgent_message" | "birthday" | "contact_overdue" | "course_ending";
+export type NotificationType =
+  | "daily_brief"
+  | "urgent_message"
+  | "birthday"
+  | "contact_overdue"
+  | "course_ending"
+  | "coordination";
 
 export async function notify(
   admin: AdminClient,

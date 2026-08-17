@@ -6,9 +6,13 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { signState } from "../_shared/state.ts";
 
+// calendar (statt calendar.readonly) seit Paket 12: die Terminkoordination
+// muss Termine anlegen koennen, sobald die Kinderbetreuung zugesagt hat.
+// Bereits verbundene Accounts brauchen dafuer ein einmaliges Neu-Verbinden -
+// Google liefert den erweiterten Scope nicht rueckwirkend fuer alte Tokens.
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar",
   "https://www.googleapis.com/auth/contacts.readonly",
   "openid",
   "email",

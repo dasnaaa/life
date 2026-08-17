@@ -6,6 +6,7 @@
 // utils/supabase-sync.js direkt nach Supabase. Dieser Pull-Sync ist das
 // zuverlaessige Backup dafuer (in Paket 8 alle 15 Minuten per Cron) - falls
 // der Live-Push mal ausfaellt oder der Service neu gestartet wurde.
+import { classifyIncomingChildcareReply, detectAndDraftCoordination } from "../_shared/coordination.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 
@@ -75,6 +76,16 @@ Deno.serve(async (req) => {
 
     const messageCount = await syncMessages(admin, accountId, messagesResponse.messages ?? []);
 
+    // Terminkoordination (Paket 12) - nur fuer WIRKLICH neue Nachrichten,
+    // nicht bei jedem Sync erneut fuer laengst bekannte. Laeuft nach dem
+    // Upsert bewusst als eigener, fehlertoleranter Schritt: ein Problem hier
+    // darf den eigentlichen Sync nicht als fehlgeschlagen melden.
+    try {
+      await runCoordinationDetection(admin, account.user_id, messagesResponse.messages ?? []);
+    } catch (coordinationError) {
+      console.error("Terminkoordination fehlgeschlagen:", coordinationError);
+    }
+
     await admin.rpc("touch_connected_account_sync", { p_account_id: accountId });
 
     return json({
@@ -125,6 +136,65 @@ async function syncMessages(admin: AdminClient, accountId: string, messages: any
   const { error } = await admin.from("messages_cache").upsert(rows, { onConflict: "account_id,external_id" });
   if (error) throw new Error(`messages_cache upsert fehlgeschlagen: ${error.message}`);
   return rows.length;
+}
+
+// Terminkoordination soll nur auf WIRKLICH neuen Nachrichten reagieren -
+// sonst wuerde jeder 15-Minuten-Cron-Sync laengst bekannte Nachrichten erneut
+// durch Gemini jagen. Ermittelt daher zuerst, welche external_ids VOR diesem
+// Sync schon in messages_cache lagen, und verarbeitet nur den Rest.
+async function runCoordinationDetection(admin: AdminClient, userId: string, messages: any[]): Promise<void> {
+  const candidates = messages.filter(
+    (m) => typeof m.id === "string" && typeof m.senderId === "string" && !m.isGroup
+  );
+  if (candidates.length === 0) return;
+
+  const externalIds = candidates.map((m) => m.id);
+  const { data: existingRows } = await admin
+    .from("messages_cache")
+    .select("external_id, id, content_preview, sender_name, sender_id")
+    .in("external_id", externalIds);
+
+  const existingIds = new Set((existingRows ?? []).map((r) => r.external_id));
+  const newCandidates = candidates.filter((m) => !existingIds.has(m.id));
+  if (newCandidates.length === 0) return;
+
+  const { data: childcareContacts } = await admin
+    .from("contact_tracking")
+    .select("id, contact_identifier")
+    .eq("user_id", userId)
+    .eq("is_childcare_contact", true)
+    .not("contact_identifier", "is", null);
+
+  // messages_cache-Zeilen fuer die neuen externen IDs holen (jetzt garantiert
+  // vorhanden, da syncMessages() bereits upserted hat), um an die generierte
+  // uuid + gespeicherten content_preview zu kommen.
+  const { data: freshRows } = await admin
+    .from("messages_cache")
+    .select("id, external_id, content_preview, sender_name, sender_id")
+    .in("external_id", newCandidates.map((m) => m.id));
+
+  for (const row of freshRows ?? []) {
+    const matchedChildcareContact = (childcareContacts ?? []).find((c) =>
+      phoneDigitsMatch(c.contact_identifier ?? "", row.sender_id ?? "")
+    );
+
+    if (matchedChildcareContact) {
+      await classifyIncomingChildcareReply(admin, userId, matchedChildcareContact.id, row.content_preview ?? "");
+    } else {
+      await detectAndDraftCoordination(admin, userId, row);
+    }
+  }
+}
+
+// WhatsApp-Sender-IDs sehen aus wie "436641234567@c.us", waehrend
+// contact_identifier frei vom Nutzer eingegeben wird (mit/ohne "+",
+// Laendervorwahl, Leerzeichen). Statt exaktem String-Vergleich werden nur
+// die letzten 8 Ziffern verglichen - robust genug fuer diesen Zweck, ohne
+// eine vollstaendige Telefonnummer-Normalisierung zu brauchen.
+function phoneDigitsMatch(a: string, b: string): boolean {
+  const digitsA = a.replace(/\D/g, "").slice(-8);
+  const digitsB = b.replace(/\D/g, "").slice(-8);
+  return digitsA.length >= 6 && digitsA === digitsB;
 }
 
 function json(body: unknown, status = 200) {

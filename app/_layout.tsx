@@ -76,6 +76,7 @@ function RootLayoutNav() {
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="notifications" options={{ presentation: "modal" }} />
+      <Stack.Screen name="coordination" options={{ presentation: "modal" }} />
     </Stack>
   );
 }

@@ -24,6 +24,7 @@ const ICON_BY_TYPE: Record<string, keyof typeof Ionicons.glyphMap> = {
   birthday: "gift-outline",
   contact_overdue: "people-outline",
   course_ending: "school-outline",
+  coordination: "people-circle-outline",
 };
 
 function formatTimestamp(value: string): string {
@@ -98,23 +99,40 @@ export default function NotificationsScreen() {
           contentContainerStyle={{ paddingBottom: 24 }}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
         >
-          {rows.map((row) => (
-            <View
-              key={row.id}
-              className={`mx-4 mb-3 flex-row gap-3 rounded-2xl border p-4 ${
-                row.is_read ? "border-slate-700 bg-slate-800" : "border-sky-500/40 bg-sky-500/5"
-              }`}
-            >
-              <View className="mt-0.5">
-                <Ionicons name={ICON_BY_TYPE[row.type] ?? "notifications-outline"} size={18} color={colors.accent} />
+          {rows.map((row) => {
+            const content = (
+              <>
+                <View className="mt-0.5">
+                  <Ionicons name={ICON_BY_TYPE[row.type] ?? "notifications-outline"} size={18} color={colors.accent} />
+                </View>
+                <View className="flex-1">
+                  <Text className="font-semibold text-slate-50">{row.title}</Text>
+                  <Text className="mt-1 text-sm text-slate-300">{row.body}</Text>
+                  <Text className="mt-2 text-xs text-slate-500">{formatTimestamp(row.created_at)}</Text>
+                </View>
+              </>
+            );
+            const rowClassName = `mx-4 mb-3 flex-row gap-3 rounded-2xl border p-4 ${
+              row.is_read ? "border-slate-700 bg-slate-800" : "border-sky-500/40 bg-sky-500/5"
+            }`;
+
+            if (row.type === "coordination") {
+              return (
+                <Pressable
+                  key={row.id}
+                  onPress={() => router.push("/coordination")}
+                  className={`${rowClassName} active:opacity-80`}
+                >
+                  {content}
+                </Pressable>
+              );
+            }
+            return (
+              <View key={row.id} className={rowClassName}>
+                {content}
               </View>
-              <View className="flex-1">
-                <Text className="font-semibold text-slate-50">{row.title}</Text>
-                <Text className="mt-1 text-sm text-slate-300">{row.body}</Text>
-                <Text className="mt-2 text-xs text-slate-500">{formatTimestamp(row.created_at)}</Text>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
       )}
     </SafeAreaView>

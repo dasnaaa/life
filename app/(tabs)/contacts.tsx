@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 
@@ -20,6 +20,7 @@ type ContactRow = {
   contact_frequency_days: number | null;
   is_priority: boolean;
   is_family: boolean;
+  is_childcare_contact: boolean;
   birthday: string | null;
 };
 
@@ -43,7 +44,7 @@ export default function ContactsScreen() {
     const { data, error } = await supabase
       .from("contact_tracking")
       .select(
-        "id, contact_name, contact_identifier, platform, last_contacted_at, contact_frequency_days, is_priority, is_family, birthday"
+        "id, contact_name, contact_identifier, platform, last_contacted_at, contact_frequency_days, is_priority, is_family, is_childcare_contact, birthday"
       )
       .order("contact_name", { ascending: true });
 
@@ -92,6 +93,11 @@ export default function ContactsScreen() {
     await Clipboard.setStringAsync(text);
     setCopiedId(contactId);
     setTimeout(() => setCopiedId((current) => (current === contactId ? null : current)), 2000);
+  }
+
+  async function handleToggleChildcare(contactId: string, nextValue: boolean) {
+    await supabase.from("contact_tracking").update({ is_childcare_contact: nextValue }).eq("id", contactId);
+    load();
   }
 
   if (isLoading) {
@@ -185,6 +191,16 @@ export default function ContactsScreen() {
 
               {activeContactId === contact.id ? (
                 <View className="mx-4 mb-3 rounded-xl border border-slate-700 bg-slate-800 p-3">
+                  <View className="mb-3 flex-row items-center justify-between border-b border-slate-700 pb-3">
+                    <View className="flex-1 pr-3">
+                      <Text className="text-sm text-slate-300">Kinderbetreuung</Text>
+                      <Text className="text-xs text-slate-500">Wird bei Terminvorschlägen automatisch angefragt.</Text>
+                    </View>
+                    <Switch
+                      value={contact.is_childcare_contact}
+                      onValueChange={(value) => handleToggleChildcare(contact.id, value)}
+                    />
+                  </View>
                   <Text className="mb-2 text-xs font-semibold uppercase text-slate-500">Nachrichtenvorschlag</Text>
                   <View className="mb-2 flex-row flex-wrap gap-2">
                     {OCCASIONS.map((occasion) => (

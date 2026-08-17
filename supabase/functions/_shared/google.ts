@@ -90,6 +90,19 @@ async function googleFetch(accessToken: string, url: string): Promise<any> {
   return response.json();
 }
 
+async function googlePost(accessToken: string, url: string, body: unknown): Promise<any> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Google API Fehler (${response.status}) fuer ${url}: ${text}`);
+  }
+  return response.json();
+}
+
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let index = 0;
@@ -215,6 +228,26 @@ export async function fetchUpcomingCalendarEvents(accessToken: string, daysAhead
       location: event.location ?? null,
       raw: event,
     }));
+}
+
+// Legt einen Termin im primaeren Kalender an. Braucht den Schreib-Scope
+// "https://www.googleapis.com/auth/calendar" statt nur "calendar.readonly" -
+// bestehende Google-Accounts muessen dafuer einmal neu verbunden werden
+// (Google liefert den erweiterten Scope nicht rueckwirkend fuer schon
+// erteilte Tokens). Aktuell nur fuer die Terminkoordination (Paket 12)
+// genutzt, bewusst minimal (kein Update/Delete, keine Attendees/Reminders).
+export async function createCalendarEvent(
+  accessToken: string,
+  event: { title: string; startTime: string; endTime: string; location?: string; description?: string }
+): Promise<{ id: string; htmlLink: string }> {
+  const result = await googlePost(accessToken, "https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    summary: event.title,
+    location: event.location,
+    description: event.description,
+    start: { dateTime: event.startTime },
+    end: { dateTime: event.endTime },
+  });
+  return { id: result.id, htmlLink: result.htmlLink };
 }
 
 // ---------- Contacts ----------

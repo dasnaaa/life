@@ -39,3 +39,21 @@ export async function fetchWhatsAppStatus(url: string, apiKey: string): Promise<
   }
   return response.json();
 }
+
+// Sendet direkt vom Geraet aus an den lokalen whatsapp-service (Paket 12,
+// fuer die Terminkoordination) - NICHT ueber eine Supabase Edge Function,
+// weil der Service auf dem eigenen Mac/VPS des Nutzers laeuft und von
+// Supabase aus nicht erreichbar ist. "to" akzeptiert sowohl eine rohe
+// Telefonnummer als auch eine fertige WhatsApp-Chat-ID (whatsapp-service
+// normalisiert das serverseitig, siehe routes/messages.js).
+export async function sendWhatsAppMessage(url: string, apiKey: string, to: string, message: string): Promise<void> {
+  const response = await fetch(`${url.replace(/\/$/, "")}/send`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ to, message }),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Senden fehlgeschlagen (${response.status}): ${text}`);
+  }
+}

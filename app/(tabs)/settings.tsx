@@ -52,6 +52,7 @@ export default function SettingsScreen() {
   const [newContactFrequency, setNewContactFrequency] = useState("");
   const [newContactIsPriority, setNewContactIsPriority] = useState(false);
   const [newContactIsFamily, setNewContactIsFamily] = useState(false);
+  const [newContactIsChildcare, setNewContactIsChildcare] = useState(false);
   const [isAddingContact, setIsAddingContact] = useState(false);
 
   const [briefTime, setBriefTime] = useState("06:30");
@@ -209,6 +210,7 @@ export default function SettingsScreen() {
         contact_frequency_days: newContactFrequency ? Number(newContactFrequency) : null,
         is_priority: newContactIsPriority,
         is_family: newContactIsFamily,
+        is_childcare_contact: newContactIsChildcare,
       });
       if (error) throw error;
 
@@ -218,6 +220,7 @@ export default function SettingsScreen() {
       setNewContactFrequency("");
       setNewContactIsPriority(false);
       setNewContactIsFamily(false);
+      setNewContactIsChildcare(false);
       showToast("Kontakt hinzugefügt.", "success");
     } catch (error) {
       showToast(`Kontakt konnte nicht angelegt werden: ${error instanceof Error ? error.message : String(error)}`, "error");
@@ -459,6 +462,13 @@ export default function SettingsScreen() {
           <View className="mb-3 flex-row items-center justify-between">
             <Text className="text-sm text-slate-300">Familie</Text>
             <Switch value={newContactIsFamily} onValueChange={setNewContactIsFamily} />
+          </View>
+          <View className="mb-3 flex-row items-center justify-between">
+            <View className="flex-1 pr-3">
+              <Text className="text-sm text-slate-300">Kinderbetreuung</Text>
+              <Text className="text-xs text-slate-500">Wird bei Terminvorschlägen von Freundinnen automatisch angefragt.</Text>
+            </View>
+            <Switch value={newContactIsChildcare} onValueChange={setNewContactIsChildcare} />
           </View>
           <Pressable
             onPress={handleAddContact}
