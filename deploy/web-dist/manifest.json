@@ -1,1 +1,11 @@
-{"name": "Daily Brief", "short_name": "Daily Brief", "description": "Pers\u00f6nliches Dashboard f\u00fcr E-Mail, Nachrichten, Kalender und Kontakte", "start_url": "/", "display": "standalone", "background_color": "#0F172A", "theme_color": "#0F172A", "orientation": "portrait", "icons": [{"src": "/favicon.png", "sizes": "any", "type": "image/png"}]}
+{
+  "name": "Daily Brief",
+  "short_name": "Daily Brief",
+  "description": "Persönliches Dashboard für E-Mail, Nachrichten, Kalender und Kontakte",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
+  "orientation": "portrait",
+  "icons": [{ "src": "/icon.png", "sizes": "any", "type": "image/png" }]
+}
