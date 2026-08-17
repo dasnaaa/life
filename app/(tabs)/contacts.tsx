@@ -4,7 +4,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 
 import { ContactCard } from "../../components/ContactCard";
+import { EmptyState } from "../../components/EmptyState";
 import { SectionHeader } from "../../components/SectionHeader";
+import { SkeletonList } from "../../components/Skeleton";
+import { colors } from "../../constants/colors";
 import { classifyContactStatus, daysSince, daysUntilNextBirthday, effectiveThreshold } from "../../lib/contactStatus";
 import { supabase } from "../../supabase/client";
 
@@ -93,8 +96,9 @@ export default function ContactsScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView edges={["top"]} className="flex-1 items-center justify-center bg-slate-900">
-        <ActivityIndicator color="#38BDF8" />
+      <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
+        <SectionHeader title="Kontakte" />
+        <SkeletonList />
       </SafeAreaView>
     );
   }
@@ -123,7 +127,7 @@ export default function ContactsScreen() {
     <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 40 }}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#38BDF8" />}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
       >
         <View className="flex-row items-center justify-between px-4 pt-4">
           <Text className="text-2xl font-bold text-slate-50">Kontakte</Text>
@@ -162,9 +166,11 @@ export default function ContactsScreen() {
 
         <SectionHeader title="Prioritätskontakte" subtitle="Familie & manuell markierte Kontakte" />
         {priorityContacts.length === 0 ? (
-          <Text className="mx-4 text-sm text-slate-500">
-            Noch keine Prioritätskontakte. Markiere Kontakte weiter unten oder in den Einstellungen.
-          </Text>
+          <EmptyState
+            icon="star-outline"
+            title="Noch keine Prioritätskontakte"
+            subtitle="Markiere Kontakte weiter unten oder in den Einstellungen."
+          />
         ) : (
           priorityContacts.map((contact) => (
             <View key={contact.id}>
@@ -216,9 +222,11 @@ export default function ContactsScreen() {
 
         <SectionHeader title="Alle Kontakte" />
         {withStatus.length === 0 ? (
-          <Text className="mx-4 text-sm text-slate-500">
-            Noch keine Kontakte analysiert. Tippe oben auf „Kontakte aktualisieren".
-          </Text>
+          <EmptyState
+            icon="people-outline"
+            title="Noch keine Kontakte analysiert"
+            subtitle='Tippe oben auf „Kontakte aktualisieren", um sie aus deinen Nachrichten zu erkennen.'
+          />
         ) : (
           withStatus.map((contact) => (
             <ContactCard

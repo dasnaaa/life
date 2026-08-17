@@ -11,6 +11,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { generateJson } from "../_shared/gemini.ts";
 import { DEFAULT_NEWS_SOURCE_DOMAINS, fetchAustrianNews, fetchAustrianPoliticsNews } from "../_shared/newsapi.ts";
 import { isBirthdayThisWeek, isBirthdayToday, isContactOverdue, isEventToday } from "../_shared/calendarToday.ts";
+import { notify } from "../_shared/notify.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 
 type AdminClient = ReturnType<typeof supabaseAdmin>;
@@ -120,12 +121,48 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Benachrichtigung ist ein Nice-to-have - ein Fehler hier darf die
+    // erfolgreich generierte Brief-Antwort nicht kaputt machen.
+    try {
+      const { title, body } = buildBriefNotification(sections);
+      await notify(admin, userId, "daily_brief", title, body, { brief_date: briefDate });
+    } catch (notifyError) {
+      console.error("Daily-Brief-Benachrichtigung fehlgeschlagen:", notifyError);
+    }
+
     return json({ ok: true, brief_date: briefDate, generated_at: generatedAt, sections });
   } catch (error) {
     console.error("generate-daily-brief error:", error);
     return json({ error: error instanceof Error ? error.message : "Unbekannter Fehler" }, 500);
   }
 });
+
+// ---------- Benachrichtigung ----------
+
+function buildBriefNotification(sections: Record<string, any>): { title: string; body: string } {
+  const highlights: string[] = [];
+
+  const dringend = sections.email?.dringend?.length ?? 0;
+  if (dringend > 0) highlights.push(`${dringend} dringende E-Mail${dringend === 1 ? "" : "s"}`);
+
+  const mussHeute = sections.messages?.muss_heute_beantwortet_werden?.length ?? 0;
+  if (mussHeute > 0) highlights.push(`${mussHeute} Nachricht${mussHeute === 1 ? "" : "en"} brauchen heute Antwort`);
+
+  const geburtstageHeute: string[] = sections.calendar?.geburtstage_heute ?? [];
+  if (geburtstageHeute.length > 0) highlights.push(`Geburtstag: ${geburtstageHeute.join(", ")}`);
+
+  const termine = sections.calendar?.heutige_termine?.length ?? 0;
+  if (termine > 0) highlights.push(`${termine} Termin${termine === 1 ? "" : "e"} heute`);
+
+  const clickupFaellig = sections.calendar?.clickup_faellig_heute?.length ?? 0;
+  if (clickupFaellig > 0) highlights.push(`${clickupFaellig} ClickUp-Task${clickupFaellig === 1 ? "" : "s"} fällig`);
+
+  if (highlights.length === 0) {
+    return { title: "Dein Daily Brief ist da", body: "Nichts Dringendes heute – ruhiger Tag." };
+  }
+
+  return { title: "Dein Daily Brief ist da", body: highlights.join(" · ") };
+}
 
 // ---------- E-Mail-Brief ----------
 

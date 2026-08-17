@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
+import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { EmptyState } from "../../components/EmptyState";
 import { MessageItem } from "../../components/MessageItem";
 import { SectionHeader } from "../../components/SectionHeader";
+import { SkeletonList } from "../../components/Skeleton";
 import { TaskItem } from "../../components/TaskItem";
+import { colors } from "../../constants/colors";
 import { classifyTaskUrgency, urgencyRank } from "../../lib/urgency";
 import { supabase } from "../../supabase/client";
 
@@ -57,8 +60,9 @@ export default function WorkScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView edges={["top"]} className="flex-1 items-center justify-center bg-slate-900">
-        <ActivityIndicator color="#38BDF8" />
+      <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
+        <SectionHeader title="Slack" />
+        <SkeletonList />
       </SafeAreaView>
     );
   }
@@ -85,12 +89,12 @@ export default function WorkScreen() {
     <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 40 }}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#38BDF8" />}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
       >
         <SectionHeader title="Slack" subtitle="Direktnachrichten · Erwähnungen · Channels" />
 
         {slackRows.length === 0 ? (
-          <Text className="mx-4 mb-4 text-sm text-slate-500">Keine ungelesenen Slack-Nachrichten.</Text>
+          <EmptyState icon="checkmark-done-outline" title="Keine ungelesenen Slack-Nachrichten" />
         ) : (
           <>
             {slackByCategory.dm.length > 0 ? (
@@ -143,7 +147,7 @@ export default function WorkScreen() {
         <SectionHeader title="ClickUp" subtitle="Nach Dringlichkeit sortiert" />
 
         {clickupTasks.length === 0 ? (
-          <Text className="mx-4 mb-4 text-sm text-slate-500">Keine offenen Tasks.</Text>
+          <EmptyState icon="checkmark-circle-outline" title="Keine offenen Tasks" />
         ) : (
           clickupTasks.map((task) => (
             <TaskItem

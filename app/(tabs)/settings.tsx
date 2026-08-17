@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { CollapsibleSection } from "../../components/CollapsibleSection";
 import { SectionHeader } from "../../components/SectionHeader";
 import { connectClickUpAccount, connectOAuthAccount } from "../../lib/connectAccount";
+import { getCurrentPushSubscription, isPushSupported, subscribeToPush, unsubscribeFromPush } from "../../lib/pushNotifications";
+import { useToast } from "../../lib/ToastProvider";
 import { fetchWhatsAppStatus, getWhatsAppServiceConfig, setWhatsAppServiceConfig, type WhatsAppStatus } from "../../lib/whatsappService";
 import { supabase } from "../../supabase/client";
 
@@ -24,10 +27,11 @@ function formatTimestamp(value: string | null): string {
 }
 
 export default function SettingsScreen() {
+  const { showToast } = useToast();
+
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
   const [newGoogleLabel, setNewGoogleLabel] = useState("");
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
@@ -60,6 +64,9 @@ export default function SettingsScreen() {
   const [newsSources, setNewsSources] = useState("derstandard.at,orf.at,diepresse.com,apa.at");
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+  const [isPushEnabled, setIsPushEnabled] = useState(false);
+  const [isTogglingPush, setIsTogglingPush] = useState(false);
+
   const loadAccounts = useCallback(async () => {
     setIsLoadingAccounts(true);
     const { data, error } = await supabase
@@ -68,12 +75,12 @@ export default function SettingsScreen() {
       .order("created_at", { ascending: true });
 
     if (error) {
-      setFeedback({ type: "error", text: `Accounts konnten nicht geladen werden: ${error.message}` });
+      showToast(`Accounts konnten nicht geladen werden: ${error.message}`, "error");
     } else {
       setAccounts((data ?? []) as ConnectedAccount[]);
     }
     setIsLoadingAccounts(false);
-  }, []);
+  }, [showToast]);
 
   const loadSettings = useCallback(async () => {
     const { data } = await supabase.from("user_settings").select("*").maybeSingle();
@@ -91,18 +98,18 @@ export default function SettingsScreen() {
       if (url) setWhatsappUrl(url);
       if (apiKey) setWhatsappKey(apiKey);
     });
+    getCurrentPushSubscription().then((subscription) => setIsPushEnabled(Boolean(subscription)));
   }, [loadAccounts, loadSettings]);
 
   async function handleSync(accountId: string, syncFunctionName: string) {
     setSyncingAccountId(accountId);
-    setFeedback(null);
     try {
       const { data, error } = await supabase.functions.invoke(syncFunctionName, { body: { account_id: accountId } });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      setFeedback({ type: "success", text: "Sync abgeschlossen." });
+      showToast("Sync abgeschlossen.", "success");
     } catch (error) {
-      setFeedback({ type: "error", text: `Sync fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}` });
+      showToast(`Sync fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       setSyncingAccountId(null);
       loadAccounts();
@@ -116,11 +123,10 @@ export default function SettingsScreen() {
     setBusy: (v: boolean) => void
   ) {
     if (!label.trim()) {
-      setFeedback({ type: "error", text: 'Bitte zuerst ein Label eingeben (z.B. "Privat").' });
+      showToast('Bitte zuerst ein Label eingeben (z.B. "Privat").', "error");
       return;
     }
     setBusy(true);
-    setFeedback(null);
     try {
       await connectOAuthAccount(`${provider}-oauth-start`, label.trim());
       setLabel("");
@@ -135,7 +141,7 @@ export default function SettingsScreen() {
         await handleSync(account.id, provider === "google" ? "sync-google" : "sync-slack");
       }
     } catch (error) {
-      setFeedback({ type: "error", text: `Verbinden fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}` });
+      showToast(`Verbinden fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       setBusy(false);
     }
@@ -143,19 +149,18 @@ export default function SettingsScreen() {
 
   async function handleConnectClickUp() {
     if (!newClickupLabel.trim() || !newClickupToken.trim()) {
-      setFeedback({ type: "error", text: "Bitte Label und API-Token eingeben." });
+      showToast("Bitte Label und API-Token eingeben.", "error");
       return;
     }
     setIsConnectingClickup(true);
-    setFeedback(null);
     try {
       await connectClickUpAccount(newClickupLabel.trim(), newClickupToken.trim());
       setNewClickupLabel("");
       setNewClickupToken("");
       await loadAccounts();
-      setFeedback({ type: "success", text: "ClickUp verbunden." });
+      showToast("ClickUp verbunden.", "success");
     } catch (error) {
-      setFeedback({ type: "error", text: `Verbinden fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}` });
+      showToast(`Verbinden fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       setIsConnectingClickup(false);
     }
@@ -164,7 +169,7 @@ export default function SettingsScreen() {
   async function handleToggleActive(account: ConnectedAccount) {
     const { error } = await supabase.from("connected_accounts").update({ is_active: !account.is_active }).eq("id", account.id);
     if (error) {
-      setFeedback({ type: "error", text: `Konnte Status nicht aendern: ${error.message}` });
+      showToast(`Konnte Status nicht ändern: ${error.message}`, "error");
       return;
     }
     loadAccounts();
@@ -172,20 +177,16 @@ export default function SettingsScreen() {
 
   async function handleCheckWhatsapp() {
     if (!whatsappUrl.trim() || !whatsappKey.trim()) {
-      setFeedback({ type: "error", text: "Bitte Service-URL und API-Key eingeben." });
+      showToast("Bitte Service-URL und API-Key eingeben.", "error");
       return;
     }
     setIsCheckingWhatsapp(true);
-    setFeedback(null);
     try {
       await setWhatsAppServiceConfig(whatsappUrl.trim(), whatsappKey.trim());
       const status = await fetchWhatsAppStatus(whatsappUrl.trim(), whatsappKey.trim());
       setWhatsappStatus(status);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        text: `WhatsApp-Service nicht erreichbar: ${error instanceof Error ? error.message : String(error)}`,
-      });
+      showToast(`WhatsApp-Service nicht erreichbar: ${error instanceof Error ? error.message : String(error)}`, "error");
       setWhatsappStatus(null);
     } finally {
       setIsCheckingWhatsapp(false);
@@ -194,11 +195,10 @@ export default function SettingsScreen() {
 
   async function handleAddContact() {
     if (!newContactName.trim()) {
-      setFeedback({ type: "error", text: "Bitte einen Namen eingeben." });
+      showToast("Bitte einen Namen eingeben.", "error");
       return;
     }
     setIsAddingContact(true);
-    setFeedback(null);
     try {
       const { data: userData } = await supabase.auth.getUser();
       const { error } = await supabase.from("contact_tracking").insert({
@@ -218,9 +218,9 @@ export default function SettingsScreen() {
       setNewContactFrequency("");
       setNewContactIsPriority(false);
       setNewContactIsFamily(false);
-      setFeedback({ type: "success", text: "Kontakt hinzugefügt." });
+      showToast("Kontakt hinzugefügt.", "success");
     } catch (error) {
-      setFeedback({ type: "error", text: `Kontakt konnte nicht angelegt werden: ${error instanceof Error ? error.message : String(error)}` });
+      showToast(`Kontakt konnte nicht angelegt werden: ${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       setIsAddingContact(false);
     }
@@ -228,7 +228,6 @@ export default function SettingsScreen() {
 
   async function handleSaveBriefSettings() {
     setIsSavingSettings(true);
-    setFeedback(null);
     try {
       const { data: userData } = await supabase.auth.getUser();
       const { error } = await supabase.from("user_settings").upsert(
@@ -241,11 +240,26 @@ export default function SettingsScreen() {
         { onConflict: "user_id" }
       );
       if (error) throw error;
-      setFeedback({ type: "success", text: "Brief-Einstellungen gespeichert." });
+      showToast("Brief-Einstellungen gespeichert.", "success");
     } catch (error) {
-      setFeedback({ type: "error", text: `Speichern fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}` });
+      showToast(`Speichern fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       setIsSavingSettings(false);
+    }
+  }
+
+  async function handleTogglePush(nextValue: boolean) {
+    setIsTogglingPush(true);
+    try {
+      const result = nextValue ? await subscribeToPush() : await unsubscribeFromPush();
+      if (!result.ok) {
+        showToast(result.error, "error");
+        return;
+      }
+      setIsPushEnabled(nextValue);
+      showToast(nextValue ? "Push-Benachrichtigungen aktiviert." : "Push-Benachrichtigungen deaktiviert.", "success");
+    } finally {
+      setIsTogglingPush(false);
     }
   }
 
@@ -261,144 +275,153 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        <SectionHeader title="Account-Verbindungen" />
+        <SectionHeader title="Einstellungen" />
 
-        {feedback ? (
-          <View className="mx-4 mb-3 rounded-xl border border-slate-700 bg-slate-800 p-3">
-            <Text className={feedback.type === "error" ? "text-sm text-rose-400" : "text-sm text-emerald-400"}>
-              {feedback.text}
-            </Text>
+        <CollapsibleSection title="Account-Verbindungen" subtitle="Google · Slack · ClickUp · WhatsApp" defaultExpanded>
+          <Text className="mb-2 text-sm font-medium text-slate-300">Google-Accounts</Text>
+          <ProviderSection
+            isLoading={isLoadingAccounts}
+            accounts={googleAccounts}
+            syncingAccountId={syncingAccountId}
+            onSync={(id) => handleSync(id, "sync-google")}
+            onToggle={handleToggleActive}
+          />
+          <ConnectForm
+            label={newGoogleLabel}
+            onChangeLabel={setNewGoogleLabel}
+            placeholder='Label, z.B. "Privat" oder "Arbeit SPÖ"'
+            buttonText="Google Account hinzufügen"
+            isBusy={isConnectingGoogle}
+            onSubmit={() => handleConnectOAuth("google", newGoogleLabel, setNewGoogleLabel, setIsConnectingGoogle)}
+          />
+
+          <Text className="mb-2 mt-2 text-sm font-medium text-slate-300">Slack-Accounts</Text>
+          <ProviderSection
+            isLoading={isLoadingAccounts}
+            accounts={slackAccounts}
+            syncingAccountId={syncingAccountId}
+            onSync={(id) => handleSync(id, "sync-slack")}
+            onToggle={handleToggleActive}
+          />
+          <ConnectForm
+            label={newSlackLabel}
+            onChangeLabel={setNewSlackLabel}
+            placeholder='Label, z.B. "Arbeit"'
+            buttonText="Slack verbinden"
+            isBusy={isConnectingSlack}
+            onSubmit={() => handleConnectOAuth("slack", newSlackLabel, setNewSlackLabel, setIsConnectingSlack)}
+          />
+
+          <Text className="mb-2 mt-2 text-sm font-medium text-slate-300">ClickUp-Accounts</Text>
+          <ProviderSection
+            isLoading={isLoadingAccounts}
+            accounts={clickupAccounts}
+            syncingAccountId={syncingAccountId}
+            onSync={(id) => handleSync(id, "sync-clickup")}
+            onToggle={handleToggleActive}
+          />
+          <View className="rounded-xl border border-slate-700 bg-slate-900 p-3">
+            <Text className="mb-2 text-sm font-medium text-slate-300">ClickUp verbinden</Text>
+            <TextInput
+              value={newClickupLabel}
+              onChangeText={setNewClickupLabel}
+              placeholder="Label"
+              placeholderTextColor="#64748B"
+              className="mb-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-50"
+            />
+            <TextInput
+              value={newClickupToken}
+              onChangeText={setNewClickupToken}
+              placeholder="Persönlicher API-Token"
+              placeholderTextColor="#64748B"
+              secureTextEntry
+              autoCapitalize="none"
+              className="mb-3 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-50"
+            />
+            <Pressable
+              onPress={handleConnectClickUp}
+              disabled={isConnectingClickup}
+              className="items-center rounded-lg bg-sky-500 py-2.5 active:opacity-80 disabled:opacity-50"
+            >
+              {isConnectingClickup ? <ActivityIndicator color="#0F172A" /> : <Text className="font-semibold text-slate-900">Verbinden</Text>}
+            </Pressable>
           </View>
-        ) : null}
 
-        {/* Google */}
-        <ProviderSection
-          title="Google-Accounts"
-          isLoading={isLoadingAccounts}
-          accounts={googleAccounts}
-          syncingAccountId={syncingAccountId}
-          onSync={(id) => handleSync(id, "sync-google")}
-          onToggle={handleToggleActive}
-        />
-        <ConnectForm
-          label={newGoogleLabel}
-          onChangeLabel={setNewGoogleLabel}
-          placeholder='Label, z.B. "Privat" oder "Arbeit SPÖ"'
-          buttonText="Google Account hinzufügen"
-          isBusy={isConnectingGoogle}
-          onSubmit={() => handleConnectOAuth("google", newGoogleLabel, setNewGoogleLabel, setIsConnectingGoogle)}
-        />
-
-        {/* Slack */}
-        <ProviderSection
-          title="Slack-Accounts"
-          isLoading={isLoadingAccounts}
-          accounts={slackAccounts}
-          syncingAccountId={syncingAccountId}
-          onSync={(id) => handleSync(id, "sync-slack")}
-          onToggle={handleToggleActive}
-        />
-        <ConnectForm
-          label={newSlackLabel}
-          onChangeLabel={setNewSlackLabel}
-          placeholder='Label, z.B. "Arbeit"'
-          buttonText="Slack verbinden"
-          isBusy={isConnectingSlack}
-          onSubmit={() => handleConnectOAuth("slack", newSlackLabel, setNewSlackLabel, setIsConnectingSlack)}
-        />
-
-        {/* ClickUp */}
-        <ProviderSection
-          title="ClickUp-Accounts"
-          isLoading={isLoadingAccounts}
-          accounts={clickupAccounts}
-          syncingAccountId={syncingAccountId}
-          onSync={(id) => handleSync(id, "sync-clickup")}
-          onToggle={handleToggleActive}
-        />
-        <View className="mx-4 mb-4 rounded-xl border border-slate-700 bg-slate-800 p-3">
-          <Text className="mb-2 text-sm font-medium text-slate-300">ClickUp verbinden</Text>
-          <TextInput
-            value={newClickupLabel}
-            onChangeText={setNewClickupLabel}
-            placeholder="Label"
-            placeholderTextColor="#64748B"
-            className="mb-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-50"
-          />
-          <TextInput
-            value={newClickupToken}
-            onChangeText={setNewClickupToken}
-            placeholder="Persönlicher API-Token"
-            placeholderTextColor="#64748B"
-            secureTextEntry
-            autoCapitalize="none"
-            className="mb-3 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-50"
-          />
-          <Pressable
-            onPress={handleConnectClickUp}
-            disabled={isConnectingClickup}
-            className="items-center rounded-lg bg-sky-500 py-2.5 active:opacity-80 disabled:opacity-50"
-          >
-            {isConnectingClickup ? <ActivityIndicator color="#0F172A" /> : <Text className="font-semibold text-slate-900">Verbinden</Text>}
-          </Pressable>
-        </View>
-
-        {/* WhatsApp */}
-        <View className="mx-4 mb-4 rounded-xl border border-slate-700 bg-slate-800 p-3">
-          <Text className="mb-2 text-sm font-medium text-slate-300">WhatsApp-Service</Text>
-          <Text className="mb-2 text-xs text-slate-500">
-            Läuft lokal auf deinem Mac oder VPS (siehe whatsapp-service/). Trag hier die Adresse ein, unter der du ihn
-            von diesem Gerät aus erreichst.
-          </Text>
-          {whatsappAccount ? (
-            <Text className="mb-2 text-xs text-slate-400">
-              Verbundenes Konto: {whatsappAccount.account_label} · Letzter Sync: {formatTimestamp(whatsappAccount.last_synced_at)}
+          <Text className="mb-2 mt-2 text-sm font-medium text-slate-300">WhatsApp-Service</Text>
+          <View className="rounded-xl border border-slate-700 bg-slate-900 p-3">
+            <Text className="mb-2 text-xs text-slate-500">
+              Läuft lokal auf deinem Mac oder VPS (siehe whatsapp-service/). Trag hier die Adresse ein, unter der du ihn
+              von diesem Gerät aus erreichst.
             </Text>
-          ) : null}
-          <TextInput
-            value={whatsappUrl}
-            onChangeText={setWhatsappUrl}
-            placeholder="http://localhost:3001"
-            placeholderTextColor="#64748B"
-            autoCapitalize="none"
-            className="mb-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-50"
-          />
-          <TextInput
-            value={whatsappKey}
-            onChangeText={setWhatsappKey}
-            placeholder="WHATSAPP_SERVICE_API_KEY"
-            placeholderTextColor="#64748B"
-            secureTextEntry
-            autoCapitalize="none"
-            className="mb-3 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-50"
-          />
-          <Pressable
-            onPress={handleCheckWhatsapp}
-            disabled={isCheckingWhatsapp}
-            className="items-center rounded-lg border border-slate-600 py-2.5 active:opacity-70 disabled:opacity-50"
-          >
-            {isCheckingWhatsapp ? <ActivityIndicator color="#38BDF8" /> : <Text className="text-sm text-slate-200">Status prüfen</Text>}
-          </Pressable>
-
-          {whatsappStatus ? (
-            <View className="mt-3">
-              <Text className="text-sm text-slate-300">
-                Status: {whatsappStatus.connected ? "Verbunden ✓" : whatsappStatus.status}
-                {whatsappStatus.phoneNumber ? ` (${whatsappStatus.phoneNumber})` : ""}
+            {whatsappAccount ? (
+              <Text className="mb-2 text-xs text-slate-400">
+                Verbundenes Konto: {whatsappAccount.account_label} · Letzter Sync: {formatTimestamp(whatsappAccount.last_synced_at)}
               </Text>
-              {whatsappStatus.status === "qr" && whatsappStatus.qr ? (
-                <View className="mt-2 items-center">
-                  <Text className="mb-2 text-xs text-slate-400">QR-Code in WhatsApp scannen:</Text>
-                  <Image source={{ uri: whatsappStatus.qr }} style={{ width: 220, height: 220 }} />
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
+            ) : null}
+            <TextInput
+              value={whatsappUrl}
+              onChangeText={setWhatsappUrl}
+              placeholder="http://localhost:3001"
+              placeholderTextColor="#64748B"
+              autoCapitalize="none"
+              className="mb-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-50"
+            />
+            <TextInput
+              value={whatsappKey}
+              onChangeText={setWhatsappKey}
+              placeholder="WHATSAPP_SERVICE_API_KEY"
+              placeholderTextColor="#64748B"
+              secureTextEntry
+              autoCapitalize="none"
+              className="mb-3 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-50"
+            />
+            <Pressable
+              onPress={handleCheckWhatsapp}
+              disabled={isCheckingWhatsapp}
+              className="items-center rounded-lg border border-slate-600 py-2.5 active:opacity-70 disabled:opacity-50"
+            >
+              {isCheckingWhatsapp ? <ActivityIndicator color="#38BDF8" /> : <Text className="text-sm text-slate-200">Status prüfen</Text>}
+            </Pressable>
 
-        {/* Kontakt-Konfiguration */}
-        <SectionHeader title="Kontakt-Konfiguration" subtitle="Manuell Kontakte hinzufügen" />
-        <View className="mx-4 mb-4 rounded-xl border border-slate-700 bg-slate-800 p-3">
+            {whatsappStatus ? (
+              <View className="mt-3">
+                <Text className="text-sm text-slate-300">
+                  Status: {whatsappStatus.connected ? "Verbunden ✓" : whatsappStatus.status}
+                  {whatsappStatus.phoneNumber ? ` (${whatsappStatus.phoneNumber})` : ""}
+                </Text>
+                {whatsappStatus.status === "qr" && whatsappStatus.qr ? (
+                  <View className="mt-2 items-center">
+                    <Text className="mb-2 text-xs text-slate-400">QR-Code in WhatsApp scannen:</Text>
+                    <Image source={{ uri: whatsappStatus.qr }} style={{ width: 220, height: 220 }} />
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Benachrichtigungen" subtitle="Push-Benachrichtigungen im Browser">
+          <View className="flex-row items-center justify-between rounded-xl border border-slate-700 bg-slate-900 p-3">
+            <View className="flex-1 pr-3">
+              <Text className="text-sm text-slate-200">Push-Benachrichtigungen</Text>
+              <Text className="mt-1 text-xs text-slate-500">
+                {isPushSupported()
+                  ? "Erhalte den Daily Brief und Dringendes auch, wenn der Tab geschlossen ist."
+                  : "Dieser Browser unterstützt keine Push-Benachrichtigungen."}
+              </Text>
+            </View>
+            {isTogglingPush ? (
+              <ActivityIndicator color="#38BDF8" />
+            ) : (
+              <Switch value={isPushEnabled} onValueChange={handleTogglePush} disabled={!isPushSupported()} />
+            )}
+          </View>
+          <Text className="mt-2 px-1 text-xs text-slate-500">
+            Alle Benachrichtigungen bleiben zusätzlich in der Glocke oben in der App sichtbar, auch ohne Push.
+          </Text>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Kontakt-Konfiguration" subtitle="Manuell Kontakte hinzufügen">
           <TextInput
             value={newContactName}
             onChangeText={setNewContactName}
@@ -444,11 +467,9 @@ export default function SettingsScreen() {
           >
             {isAddingContact ? <ActivityIndicator color="#0F172A" /> : <Text className="font-semibold text-slate-900">Kontakt hinzufügen</Text>}
           </Pressable>
-        </View>
+        </CollapsibleSection>
 
-        {/* Brief-Einstellungen */}
-        <SectionHeader title="Brief-Einstellungen" />
-        <View className="mx-4 mb-4 rounded-xl border border-slate-700 bg-slate-800 p-3">
+        <CollapsibleSection title="Brief-Einstellungen" subtitle="Uhrzeit, Sektionen, News-Quellen">
           <Text className="mb-1 text-sm text-slate-300">Brief-Uhrzeit (Wiener Zeit)</Text>
           <TextInput
             value={briefTime}
@@ -485,7 +506,7 @@ export default function SettingsScreen() {
           >
             {isSavingSettings ? <ActivityIndicator color="#0F172A" /> : <Text className="font-semibold text-slate-900">Speichern</Text>}
           </Pressable>
-        </View>
+        </CollapsibleSection>
 
         <Pressable onPress={handleSignOut} className="mx-4 mt-4 items-center rounded-xl border border-rose-900 py-3">
           <Text className="text-sm font-medium text-rose-400">Abmelden</Text>
@@ -496,14 +517,12 @@ export default function SettingsScreen() {
 }
 
 function ProviderSection({
-  title,
   isLoading,
   accounts,
   syncingAccountId,
   onSync,
   onToggle,
 }: {
-  title: string;
   isLoading: boolean;
   accounts: ConnectedAccount[];
   syncingAccountId: string | null;
@@ -511,8 +530,7 @@ function ProviderSection({
   onToggle: (account: ConnectedAccount) => void;
 }) {
   return (
-    <View className="mx-4 mb-2">
-      <Text className="mb-2 text-sm font-medium text-slate-300">{title}</Text>
+    <View className="mb-2">
       {isLoading ? (
         <ActivityIndicator color="#38BDF8" />
       ) : accounts.length === 0 ? (
@@ -520,7 +538,7 @@ function ProviderSection({
       ) : (
         <View className="gap-2">
           {accounts.map((account) => (
-            <View key={account.id} className="rounded-xl border border-slate-700 bg-slate-800 p-3">
+            <View key={account.id} className="rounded-xl border border-slate-700 bg-slate-900 p-3">
               <View className="flex-row items-center justify-between">
                 <View className="flex-1 pr-3">
                   <Text className="font-medium text-slate-50">{account.account_label ?? account.provider}</Text>
@@ -566,13 +584,13 @@ function ConnectForm({
   onSubmit: () => void;
 }) {
   return (
-    <View className="mx-4 mb-4 rounded-xl border border-slate-700 bg-slate-800 p-3">
+    <View className="mb-4 rounded-xl border border-slate-700 bg-slate-900 p-3">
       <TextInput
         value={label}
         onChangeText={onChangeLabel}
         placeholder={placeholder}
         placeholderTextColor="#64748B"
-        className="mb-3 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-50"
+        className="mb-3 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-50"
       />
       <Pressable onPress={onSubmit} disabled={isBusy} className="items-center rounded-lg bg-sky-500 py-2.5 active:opacity-80 disabled:opacity-50">
         {isBusy ? <ActivityIndicator color="#0F172A" /> : <Text className="font-semibold text-slate-900">{buttonText}</Text>}

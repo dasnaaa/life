@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { EmptyState } from "../../components/EmptyState";
 import { SectionHeader } from "../../components/SectionHeader";
+import { SkeletonList } from "../../components/Skeleton";
+import { colors } from "../../constants/colors";
 import { buildWeekPreview, groupByDay, isWorkAccountLabel, type CalendarEventSource } from "../../lib/calendarPreview";
 import { nextOccurrence, weeksRemainingFromRule } from "../../lib/recurrence";
 import { supabase } from "../../supabase/client";
@@ -99,8 +102,9 @@ export default function CalendarScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView edges={["top"]} className="flex-1 items-center justify-center bg-slate-900">
-        <ActivityIndicator color="#38BDF8" />
+      <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
+        <SectionHeader title="Kalender & Kurse" />
+        <SkeletonList />
       </SafeAreaView>
     );
   }
@@ -125,7 +129,7 @@ export default function CalendarScreen() {
     <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 40 }}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#38BDF8" />}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
       >
         <View className="flex-row items-center justify-between px-4 pt-4">
           <Text className="text-2xl font-bold text-slate-50">Kalender & Kurse</Text>
@@ -144,9 +148,11 @@ export default function CalendarScreen() {
 
         <SectionHeader title="Erkannte Kurse" subtitle="Kinder-Aktivitäten & Kurse" />
         {courses.length === 0 ? (
-          <Text className="mx-4 mb-4 text-sm text-slate-500">
-            Noch keine Kurse erkannt. Tippe oben auf „Kalender analysieren".
-          </Text>
+          <EmptyState
+            icon="school-outline"
+            title="Noch keine Kurse erkannt"
+            subtitle='Tippe oben auf „Kalender analysieren", um wiederkehrende Termine automatisch zu prüfen.'
+          />
         ) : (
           courses.map((course) => {
             const next = nextOccurrence(
@@ -230,7 +236,7 @@ export default function CalendarScreen() {
 
         <SectionHeader title="Diese Woche" subtitle="Heute + nächste 7 Tage" />
         {dayGroups.length === 0 ? (
-          <Text className="mx-4 text-sm text-slate-500">Keine Termine in den nächsten 7 Tagen.</Text>
+          <EmptyState icon="calendar-clear-outline" title="Keine Termine in den nächsten 7 Tagen" />
         ) : (
           dayGroups.map((group) => (
             <View key={group.dateKey} className="mb-3">

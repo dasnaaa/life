@@ -3,7 +3,10 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } 
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BriefCard } from "../../components/BriefCard";
+import { EmptyState } from "../../components/EmptyState";
 import { SectionHeader } from "../../components/SectionHeader";
+import { SkeletonList } from "../../components/Skeleton";
+import { colors } from "../../constants/colors";
 import { supabase } from "../../supabase/client";
 
 type BriefRow = {
@@ -94,8 +97,11 @@ export default function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView edges={["top"]} className="flex-1 items-center justify-center bg-slate-900">
-        <ActivityIndicator color="#38BDF8" />
+      <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
+        <View className="px-4 pt-4">
+          <Text className="text-2xl font-bold text-slate-50">Daily Brief</Text>
+        </View>
+        <SkeletonList />
       </SafeAreaView>
     );
   }
@@ -106,7 +112,7 @@ export default function DashboardScreen() {
     <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 24 }}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#38BDF8" />}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
       >
         <View className="flex-row items-center justify-between px-4 pt-4">
           <View>
@@ -128,45 +134,57 @@ export default function DashboardScreen() {
           </Pressable>
         </View>
 
-        <SectionHeader title="E-Mail" />
-        <BriefCard
-          icon="mail-outline"
-          title="E-Mail-Zusammenfassung"
-          summary={emailSummary(sections.email?.content)}
-          generatedAt={formatTimestamp(sections.email?.generated_at)}
-          onPress={() => setExpanded(expanded === "email" ? null : "email")}
-        />
-        {expanded === "email" && sections.email ? <EmailDetails content={sections.email.content} /> : null}
+        {!hasAnyBrief && !isGenerating ? (
+          <EmptyState
+            icon="sunny-outline"
+            title="Noch kein Brief für heute"
+            subtitle="Generiert sich automatisch zu deiner Brief-Uhrzeit, oder jetzt sofort per Knopfdruck oben."
+            actionLabel="Jetzt generieren"
+            onAction={handleGenerate}
+          />
+        ) : (
+          <>
+            <SectionHeader title="E-Mail" />
+            <BriefCard
+              icon="mail-outline"
+              title="E-Mail-Zusammenfassung"
+              summary={emailSummary(sections.email?.content)}
+              generatedAt={formatTimestamp(sections.email?.generated_at)}
+              onPress={() => setExpanded(expanded === "email" ? null : "email")}
+            />
+            {expanded === "email" && sections.email ? <EmailDetails content={sections.email.content} /> : null}
 
-        <SectionHeader title="News" subtitle="Österreich & Politik" />
-        <BriefCard
-          icon="newspaper-outline"
-          title="Nachrichten des Tages"
-          summary={newsSummary(sections.news?.content)}
-          generatedAt={formatTimestamp(sections.news?.generated_at)}
-          onPress={() => setExpanded(expanded === "news" ? null : "news")}
-        />
-        {expanded === "news" && sections.news ? <NewsDetails content={sections.news.content} /> : null}
+            <SectionHeader title="News" subtitle="Österreich & Politik" />
+            <BriefCard
+              icon="newspaper-outline"
+              title="Nachrichten des Tages"
+              summary={newsSummary(sections.news?.content)}
+              generatedAt={formatTimestamp(sections.news?.generated_at)}
+              onPress={() => setExpanded(expanded === "news" ? null : "news")}
+            />
+            {expanded === "news" && sections.news ? <NewsDetails content={sections.news.content} /> : null}
 
-        <SectionHeader title="Nachrichten" subtitle="WhatsApp · Slack · ClickUp" />
-        <BriefCard
-          icon="chatbubbles-outline"
-          title="Was heute wichtig ist"
-          summary={messagesSummary(sections.messages?.content)}
-          generatedAt={formatTimestamp(sections.messages?.generated_at)}
-          onPress={() => setExpanded(expanded === "messages" ? null : "messages")}
-        />
-        {expanded === "messages" && sections.messages ? <MessagesDetails content={sections.messages.content} /> : null}
+            <SectionHeader title="Nachrichten" subtitle="WhatsApp · Slack · ClickUp" />
+            <BriefCard
+              icon="chatbubbles-outline"
+              title="Was heute wichtig ist"
+              summary={messagesSummary(sections.messages?.content)}
+              generatedAt={formatTimestamp(sections.messages?.generated_at)}
+              onPress={() => setExpanded(expanded === "messages" ? null : "messages")}
+            />
+            {expanded === "messages" && sections.messages ? <MessagesDetails content={sections.messages.content} /> : null}
 
-        <SectionHeader title="Tages-Vorschau" />
-        <BriefCard
-          icon="today-outline"
-          title="Kalender & Geburtstage"
-          summary={calendarSummary(sections.calendar?.content)}
-          generatedAt={formatTimestamp(sections.calendar?.generated_at)}
-          onPress={() => setExpanded(expanded === "calendar" ? null : "calendar")}
-        />
-        {expanded === "calendar" && sections.calendar ? <CalendarDetails content={sections.calendar.content} /> : null}
+            <SectionHeader title="Tages-Vorschau" />
+            <BriefCard
+              icon="today-outline"
+              title="Kalender & Geburtstage"
+              summary={calendarSummary(sections.calendar?.content)}
+              generatedAt={formatTimestamp(sections.calendar?.generated_at)}
+              onPress={() => setExpanded(expanded === "calendar" ? null : "calendar")}
+            />
+            {expanded === "calendar" && sections.calendar ? <CalendarDetails content={sections.calendar.content} /> : null}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

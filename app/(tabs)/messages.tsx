@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text } from "react-native";
+import { RefreshControl, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { EmptyState } from "../../components/EmptyState";
 import { MessageItem } from "../../components/MessageItem";
 import { SectionHeader } from "../../components/SectionHeader";
+import { SkeletonList } from "../../components/Skeleton";
+import { colors } from "../../constants/colors";
 import { supabase } from "../../supabase/client";
 
 type MessageRow = {
@@ -65,8 +68,9 @@ export default function MessagesScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView edges={["top"]} className="flex-1 items-center justify-center bg-slate-900">
-        <ActivityIndicator color="#38BDF8" />
+      <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
+        <SectionHeader title="Alle Nachrichten" />
+        <SkeletonList />
       </SafeAreaView>
     );
   }
@@ -75,11 +79,15 @@ export default function MessagesScreen() {
     <SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 24 }}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#38BDF8" />}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
       >
         <SectionHeader title="Alle Nachrichten" subtitle={`${rows.length} ungelesen`} />
         {rows.length === 0 ? (
-          <Text className="mx-4 text-sm text-slate-500">Keine ungelesenen Nachrichten.</Text>
+          <EmptyState
+            icon="checkmark-done-outline"
+            title="Alles gelesen"
+            subtitle="Keine ungelesenen Nachrichten aus WhatsApp, Slack oder ClickUp."
+          />
         ) : (
           rows.map((row) => (
             <MessageItem

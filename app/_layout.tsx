@@ -10,6 +10,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors } from "../constants/colors";
 import { AuthProvider, useAuth } from "../lib/AuthProvider";
 import { registerBackgroundSync } from "../lib/backgroundSync";
+import { ToastProvider } from "../lib/ToastProvider";
 import { supabase } from "../supabase/client";
 
 function RootLayoutNav() {
@@ -74,6 +75,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="onboarding" />
+      <Stack.Screen name="notifications" options={{ presentation: "modal" }} />
     </Stack>
   );
 }
@@ -97,7 +99,9 @@ export default function RootLayout() {
       </Head>
       <StatusBar style="light" />
       <AuthProvider>
-        <RootLayoutNav />
+        <ToastProvider>
+          <RootLayoutNav />
+        </ToastProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

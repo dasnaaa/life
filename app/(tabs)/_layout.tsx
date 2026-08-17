@@ -1,8 +1,27 @@
+import { Pressable, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Tabs } from "expo-router";
+import { router, Tabs } from "expo-router";
 
 import { colors } from "../../constants/colors";
 import { useUnreadBadge } from "../../lib/useUnreadBadge";
+import { useUnreadNotifications } from "../../lib/useUnreadNotifications";
+
+function NotificationBell() {
+  const unreadNotifications = useUnreadNotifications();
+
+  return (
+    <Pressable onPress={() => router.push("/notifications")} className="mr-1 p-2 active:opacity-70">
+      <View>
+        <Ionicons name="notifications-outline" size={22} color={colors.textPrimary} />
+        {unreadNotifications > 0 ? (
+          <View className="absolute -right-1 -top-1 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1">
+            <Text className="text-[10px] font-bold text-white">{unreadNotifications > 9 ? "9+" : unreadNotifications}</Text>
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
 
 export default function TabsLayout() {
   const unreadCount = useUnreadBadge();
@@ -12,6 +31,7 @@ export default function TabsLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.textPrimary,
+        headerRight: () => <NotificationBell />,
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
